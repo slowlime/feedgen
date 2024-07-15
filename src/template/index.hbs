@@ -1,0 +1,15 @@
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Feedgen feeds</title>
+  </head>
+
+  <body>
+    <h1>Feedgen feed list</h1>
+    <ul>
+      {{~#each feeds}}
+      <li><strong>{{feed.name}}:</strong> <a href="{{feed.rss_url}}">RSS</a> (entries: {{feed.entry_count}}), <a href="{{feed.fetch_url}}">source</a> (last updated: {{feed.last_updated}})</li>
+      {{~/each}}
+    </ul>
+  </body>
+</html>
