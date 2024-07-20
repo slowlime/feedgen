@@ -6,6 +6,7 @@ mod server;
 mod state;
 mod storage;
 mod template;
+mod xpath;
 
 use std::process::ExitCode;
 
@@ -17,16 +18,42 @@ use state::State;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::error;
+use tracing::level_filters::LevelFilter;
+use tracing_subscriber::prelude::*;
+use tracing_subscriber::EnvFilter;
+
+fn set_up_logging() {
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer())
+        .with(
+            EnvFilter::builder()
+                .with_default_directive(LevelFilter::INFO.into())
+                .with_env_var("FEEDGEN_LOG")
+                .from_env_lossy(),
+        )
+        .init();
+}
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    set_up_logging();
+
     let cancel = CancellationToken::new();
+
+    tokio::spawn({
+        let cancel = cancel.clone();
+
+        async move {
+            tokio::signal::ctrl_c().await.unwrap();
+            cancel.cancel();
+        }
+    });
 
     let mut tasks = match start(cancel.clone()).await {
         Ok(tasks) => tasks,
 
         Err(e) => {
-            error!("{e}");
+            error!("{e:#}");
             return ExitCode::FAILURE;
         }
     };
@@ -37,7 +64,7 @@ async fn main() -> ExitCode {
         cancel.cancel();
 
         if let Err(e) = task_result {
-            error!("{e}");
+            error!("{e:#}");
             exit_code = ExitCode::FAILURE;
         }
     }

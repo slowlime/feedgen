@@ -21,7 +21,7 @@ where
         Ok(r) => Ok(r),
 
         Err(e) => {
-            error!("Error occured while processing an HTTP request: {e}");
+            error!("Error occured while processing an HTTP request: {e:#}");
 
             Err(StatusCode::INTERNAL_SERVER_ERROR.into())
         }

@@ -13,7 +13,7 @@ use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use tokio::time::Instant;
 use tokio::{select, time};
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, debug_span, error, info, trace_span, Instrument};
+use tracing::{debug, debug_span, error, info, trace, trace_span, Instrument};
 
 use crate::state::Feed;
 use crate::storage::Storage;
@@ -112,6 +112,7 @@ impl Task {
         let offset = self.rng.gen_range(Duration::ZERO..MAX_INITIAL_SLEEP);
 
         let initial_sleep = if let Ok(Some(last_update)) = self.last_update().await {
+            trace!(%last_update, "Found the last update time");
             let next_update = last_update + self.feed().fetch_interval;
             let remaining = (next_update - OffsetDateTime::now_utc()).max(::time::Duration::ZERO);
 
@@ -120,12 +121,13 @@ impl Task {
             offset
         };
 
+        trace!("Scheduling the next update in {}s", initial_sleep.as_secs());
         let mut next_fetch = pin!(time::sleep(initial_sleep));
 
         loop {
             select! {
                 _ = self.cancel.cancelled() => {
-                    debug!("received a cancellation signal; exiting");
+                    debug!("Received a cancellation signal; exiting");
                     break;
                 }
 
@@ -134,11 +136,13 @@ impl Task {
 
             if let Err(e) = self.update().await {
                 error!(
-                    "Encountered a failure while updating the feed `{}`: {e}",
+                    "Encountered a failure while updating the feed `{}`: {e:#}",
                     self.name
                 );
             }
 
+            let fetch_interval = self.feed().fetch_interval;
+            trace!("Scheduling the next update in {}s", fetch_interval.as_secs());
             next_fetch
                 .as_mut()
                 .reset(Instant::now() + self.feed().fetch_interval);

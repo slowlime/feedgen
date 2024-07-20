@@ -7,7 +7,7 @@ use handlebars::Handlebars;
 use reqwest::Url;
 
 use crate::config::{self, Config, ExtractorConfig};
-use crate::extractor::{Extractor, XpathExtractor};
+use crate::extractor::{Extractor, XPathExtractor};
 use crate::storage::Storage;
 use crate::template;
 
@@ -50,7 +50,7 @@ pub struct Feed {
 
 impl Feed {
     fn new(cfg: &Config, feed: &config::Feed) -> Self {
-        let fetch_interval = feed.fetch_interval.unwrap_or(cfg.fetch_interval);
+        let fetch_interval = feed.fetch_interval.unwrap_or(cfg.fetch_interval).into();
         let extractor = Mutex::new(make_extractor(&feed.extractor));
 
         Feed {
@@ -63,6 +63,6 @@ impl Feed {
 
 fn make_extractor(cfg: &ExtractorConfig) -> Box<dyn Extractor + Send> {
     match cfg {
-        ExtractorConfig::Xpath(cfg) => Box::new(XpathExtractor::from_cfg(&cfg)),
+        ExtractorConfig::XPath(cfg) => Box::new(XPathExtractor::from_cfg(cfg)),
     }
 }

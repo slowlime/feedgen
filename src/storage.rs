@@ -215,7 +215,7 @@ impl Tx {
                 Err(e) => {
                     error!(
                         %feed_name, entry_id = %entry.entry_id,
-                        "The value of the column `url` is malformed: {e}",
+                        "The value of the column `url` is malformed: {e:#}",
                     );
                     continue;
                 }

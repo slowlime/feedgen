@@ -113,7 +113,7 @@ pub async fn get_feed(
         .link(feed.request_url.as_str())
         .last_build_date(
             now.format(&Rfc2822)
-                .inspect_err(|e| error!("could not format the last build date ({now}): {e}"))
+                .inspect_err(|e| error!("could not format the last build date ({now}): {e:#}"))
                 .ok(),
         )
         .generator(Some(format!("Feedgen {}", env!("CARGO_PKG_VERSION"))));
@@ -135,7 +135,7 @@ pub async fn get_feed(
                     pub_date
                         .format(&Rfc2822)
                         .inspect_err(|e| {
-                            error!("could not format the publication date ({pub_date}): {e}")
+                            error!("could not format the publication date ({pub_date}): {e:#}")
                         })
                         .ok()
                 }))
