@@ -109,7 +109,7 @@ pub async fn get_feed(
     let now = OffsetDateTime::now_utc();
     let mut channel = ChannelBuilder::default();
     channel
-        .title(name)
+        .title(name.clone())
         .link(feed.request_url.as_str())
         .last_build_date(
             now.format(&Rfc2822)
@@ -127,7 +127,7 @@ pub async fn get_feed(
                 .author(entry.author)
                 .guid(Some(
                     GuidBuilder::default()
-                        .value(entry.id)
+                        .value(format!("feedgen/{}/{}", name, entry.id))
                         .permalink(false)
                         .build(),
                 ))

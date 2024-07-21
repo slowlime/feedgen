@@ -150,7 +150,7 @@ impl Tx {
         let feed_counts: Vec<(i64, i64)> = sqlx::query_as(
             "SELECT feeds.id AS id, COUNT(*) AS entry_count
             FROM feeds
-              LEFT JOIN entries
+              LEFT JOIN entries ON (feeds.id = entries.feed_id)
             GROUP BY feeds.id
             ORDER BY feeds.id ASC",
         )

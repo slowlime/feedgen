@@ -42,8 +42,8 @@ kind = "xpath"
 entry = "//tr[@class='athing']"
 
 # An XPath expression returning a unique identifier of an entry. Feedgen uses it
-# to identify entries: if several entries have the same id, only one will be
-# stored. Must be non-empty.
+# to identify entries: if several entries in the same feed have the same id,
+# only one will be stored. Must be non-empty.
 id = "@id"
 
 # An XPath expression returning the entry title. Must be non-empty.
@@ -52,9 +52,9 @@ title = ".//span[@class='titleline']/a"
 # An XPath expression returning the entry description.
 description = ".//span[@class='titleline']//text()"
 
-# An XPath expression returning the entry URL. Must be a valid URL;
-# in particular, it must not use relative links.
+# An XPath expression returning the entry URL. If the returned URL is relative,
+# it's joined to the source page URL. Must be a valid relative or absolute URL.
 url = ".//span[@class='titleline']/a/@href"
 
 # An XPath expression returning the author of the entry. Optional.
-author = "following-sibling::tr//a[@class='hnuser']"
+author = "(following-sibling::tr//a[@class='hnuser'])[1]"

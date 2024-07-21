@@ -16,6 +16,20 @@ pub struct Entry {
     pub pub_date: Option<OffsetDateTime>,
 }
 
+pub struct Context<'c> {
+    fetch_url: &'c Url,
+}
+
+impl<'c> Context<'c> {
+    pub fn new(fetch_url: &'c Url) -> Self {
+        Self { fetch_url }
+    }
+
+    pub fn fetch_url(&self) -> &'c Url {
+        self.fetch_url
+    }
+}
+
 pub trait Extractor {
-    fn extract(&mut self, html: &str) -> Result<Vec<Entry>>;
+    fn extract<'c>(&mut self, ctx: Context<'c>, html: &str) -> Result<Vec<Entry>>;
 }

@@ -15,6 +15,7 @@ use tokio::{select, time};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, debug_span, error, info, trace, trace_span, Instrument};
 
+use crate::extractor::Context as ExtractorContext;
 use crate::state::Feed;
 use crate::storage::Storage;
 
@@ -133,7 +134,7 @@ impl Task {
             offset
         };
 
-        trace!("Scheduling the next update in {}s", initial_sleep.as_secs());
+        debug!("Scheduling the next update in {}s", initial_sleep.as_secs());
         let mut next_fetch = pin!(time::sleep(initial_sleep));
 
         loop {
@@ -154,7 +155,10 @@ impl Task {
             }
 
             let fetch_interval = self.feed().fetch_interval;
-            trace!("Scheduling the next update in {}s", fetch_interval.as_secs());
+            debug!(
+                "Scheduling the next update in {}s",
+                fetch_interval.as_secs()
+            );
             next_fetch
                 .as_mut()
                 .reset(Instant::now() + self.feed().fetch_interval);
@@ -196,7 +200,7 @@ impl Task {
             .extractor
             .lock()
             .unwrap()
-            .extract(&body)
+            .extract(ExtractorContext::new(&self.feed().request_url), &body)
             .context("could not extract feed entries")?;
         let count = entries.len();
 

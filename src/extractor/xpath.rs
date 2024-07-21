@@ -8,7 +8,6 @@ use html5ever::interface::{ElementFlags, NodeOrText, QuirksMode, TreeSink};
 use html5ever::tendril::{StrTendril, TendrilSink};
 use html5ever::tree_builder::TreeBuilderOpts;
 use html5ever::{parse_document, Attribute, ExpandedName, ParseOpts, QualName};
-use reqwest::Url;
 use sxd_document::dom::{
     ChildOfElement, ChildOfRoot, Comment, Document, Element, ParentOfChild, ProcessingInstruction,
     Root, Text,
@@ -20,7 +19,7 @@ use tracing::{debug, warn};
 use crate::config;
 use crate::xpath::XPath;
 
-use super::{Entry, Extractor};
+use super::{Context as ExtractorContext, Entry, Extractor};
 
 const HTTP_XMLNS_URI: &str = "http://www.w3.org/1999/xhtml";
 
@@ -543,7 +542,7 @@ impl XPathExtractor {
 }
 
 impl Extractor for XPathExtractor {
-    fn extract(&mut self, html: &str) -> Result<Vec<Entry>> {
+    fn extract<'c>(&mut self, ctx: ExtractorContext<'c>, html: &str) -> Result<Vec<Entry>> {
         let html = parse_html(html);
         let mut xpath_ctx = Context::new();
         xpath_ctx.set_namespace("html", HTTP_XMLNS_URI);
@@ -602,7 +601,7 @@ impl Extractor for XPathExtractor {
             let Some(url) = find_one(&self.url, "url", false) else {
                 continue;
             };
-            let url = match Url::parse(&url) {
+            let url = match ctx.fetch_url().join(&url) {
                 Ok(url) => url,
                 Err(e) => {
                     warn!(
