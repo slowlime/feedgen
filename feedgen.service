@@ -1,0 +1,17 @@
+[Unit]
+Description=An RSS feed generator
+
+[Service]
+ExecStart=/usr/local/bin/feedgen -c /etc/feedgen.toml
+Restart=on-failure
+DynamicUser=true
+WorkingDirectory=/var/lib/feedgen
+ProtectSystem=strict
+StateDirectory=feedgen
+CacheDirectory=feedgen
+ReadWritePaths=/var/lib/feedgen/ /var/cache/feedgen/
+Environment=FEEDGEN_LOG=info
+KillSignal=SIGINT
+
+[Install]
+WantedBy=network-online.target
