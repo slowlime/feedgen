@@ -8,7 +8,7 @@
     <h1>Feedgen feed list</h1>
     <ul>
       {{~#each feeds}}
-      <li><strong>{{feed.name}}:</strong> <a href="{{feed.rss_url}}">RSS</a> (entries: {{feed.entry_count}}), <a href="{{feed.fetch_url}}">source</a> (last updated: {{feed.last_updated}})</li>
+      <li><strong>{{this.name}}:</strong> <a href="{{this.rss_url}}">RSS</a> (entries: {{this.entry_count}}), <a href="{{this.fetch_url}}">source</a> (last updated: {{this.last_updated}})</li>
       {{~/each}}
     </ul>
   </body>

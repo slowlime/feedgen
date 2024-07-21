@@ -78,7 +78,7 @@ impl<'de> Deserialize<'de> for XPath {
             where
                 E: serde::de::Error,
             {
-                XPath::new(v).map_err(E::custom)
+                XPath::new(v).map_err(|e| E::custom(format!("{e:#}")))
             }
 
             fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>

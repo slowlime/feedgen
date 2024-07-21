@@ -7,7 +7,7 @@ use reqwest::Url;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::{Sqlite, SqlitePool, Transaction};
 use time::OffsetDateTime;
-use tracing::error;
+use tracing::{debug, error, info, instrument, trace_span, Instrument, Span};
 
 use crate::extractor::Entry;
 
@@ -31,6 +31,7 @@ impl Storage {
             )
             .await
             .with_context(|| anyhow!("could not open a SQLite database `{}`", db_path.display()))?;
+        info!("Using an SQLite database `{}`", db_path.display());
         sqlx::migrate!()
             .run(&pool)
             .await
@@ -60,57 +61,66 @@ impl Tx {
             .context("could not commit a DB transaction")
     }
 
+    #[instrument(level = "TRACE", skip(self, entries), fields(entry_count = entries.len()))]
     pub async fn store_entries(&mut self, feed_name: &str, entries: Vec<Entry>) -> Result<()> {
         let now = OffsetDateTime::now_utc();
-        let feed_id: i64 = sqlx::query(
+        let feed_id: i64 = sqlx::query_scalar(
             "INSERT
             INTO feeds (name, last_updated)
             VALUES (?1, ?2)
-            ON CONFLICT (name) DO UPDATE SET last_updated = excluded.last_updated",
+            ON CONFLICT (name) DO UPDATE SET last_updated = excluded.last_updated
+            RETURNING id",
         )
         .bind(feed_name)
         .bind(now)
-        .execute(self.0.as_mut())
+        .fetch_one(self.0.as_mut())
         .await
-        .context("could not retrieve the feed id")?
-        .last_insert_rowid();
+        .context("could not retrieve the feed id")?;
 
-        for entry in entries {
-            sqlx::query(
-                "INSERT
-                INTO entries (
-                    feed_id,
-                    retrieved,
-                    entry_id,
-                    title,
-                    description,
-                    url,
-                    author,
-                    published
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-                ON CONFLICT (feed_id, entry_id) DO UPDATE SET
-                  title = excluded.title,
-                  description = excluded.description,
-                  url = excluded.url,
-                  author = excluded.author,
-                  published = excluded.published",
-            )
-            .bind(feed_id)
-            .bind(now)
-            .bind(entry.id)
-            .bind(entry.title)
-            .bind(entry.description)
-            .bind(entry.url.to_string())
-            .bind(entry.author)
-            .bind(entry.pub_date)
-            .execute(self.0.as_mut())
-            .await
-            .context("could not insert an entry")?;
+        Span::current().record("feed_id", feed_id);
+
+        for (idx, entry) in entries.into_iter().enumerate() {
+            async {
+                debug!(%entry.id, %entry.title, "Storing entry");
+                sqlx::query(
+                    "INSERT
+                    INTO entries (
+                      feed_id,
+                      retrieved,
+                      entry_id,
+                      title,
+                      description,
+                      url,
+                      author,
+                      published
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                    ON CONFLICT (feed_id, entry_id) DO UPDATE SET
+                      title = excluded.title,
+                      description = excluded.description,
+                      url = excluded.url,
+                      author = excluded.author,
+                      published = excluded.published",
+                )
+                .bind(feed_id)
+                .bind(now)
+                .bind(entry.id)
+                .bind(entry.title)
+                .bind(entry.description)
+                .bind(entry.url.to_string())
+                .bind(entry.author)
+                .bind(entry.pub_date)
+                .execute(self.0.as_mut())
+                .await
+                .context("could not insert an entry")
+            }
+            .instrument(trace_span!("insert_entry", %idx))
+            .await?;
         }
 
         Ok(())
     }
 
+    #[instrument(level = "TRACE", skip(self))]
     pub async fn get_feed_last_updated(
         &mut self,
         feed_name: &str,
@@ -126,6 +136,7 @@ impl Tx {
         .context("could not retrieve the last update date")
     }
 
+    #[instrument(level = "TRACE", skip(self))]
     pub async fn get_feeds(&mut self) -> Result<Vec<FeedInfo>> {
         let feeds: Vec<Feed> = sqlx::query_as(
             "SELECT id, name, last_updated
@@ -137,11 +148,11 @@ impl Tx {
         .context("could not retrieve the feed list")?;
 
         let feed_counts: Vec<(i64, i64)> = sqlx::query_as(
-            "SELECT id, COUNT(*) AS entry_count
+            "SELECT feeds.id AS id, COUNT(*) AS entry_count
             FROM feeds
-              LEFT JOIN entries ON (id = entries.feed_id)
-            GROUP BY id
-            ORDER BY id ASC",
+              LEFT JOIN entries
+            GROUP BY feeds.id
+            ORDER BY feeds.id ASC",
         )
         .fetch_all(self.0.as_mut())
         .await
@@ -179,6 +190,7 @@ impl Tx {
         Ok(result)
     }
 
+    #[instrument(level = "TRACE", skip(self))]
     pub async fn get_feed_entries(&mut self, feed_name: &str, count: usize) -> Result<Vec<Entry>> {
         let feed_id: Option<i64> = sqlx::query_scalar(
             "SELECT id
@@ -194,7 +206,14 @@ impl Tx {
         };
 
         let entries: Vec<entities::Entry> = sqlx::query_as(
-            "SELECT entry_id, title, description, url, author
+            "SELECT
+              retrieved,
+              entry_id,
+              title,
+              description,
+              url,
+              author,
+              published
             FROM entries
             WHERE feed_id = ?1
             ORDER BY retrieved DESC
