@@ -1,10 +1,10 @@
-pub mod sxd;
+mod xpath;
 
 use anyhow::Result;
 use reqwest::Url;
 use time::OffsetDateTime;
 
-pub use sxd::XPathExtractor;
+pub use xpath::XPathExtractor;
 
 #[derive(Debug, Clone)]
 pub struct Entry {
