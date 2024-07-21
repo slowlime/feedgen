@@ -1,0 +1,59 @@
+# An address to bind the HTTP server to.
+bind-addr = "127.0.0.1:20654"
+
+# The path to a Feedgen database file.
+# db-path = "/var/lib/feedgen/feedgen.sqlite3"
+db-path = "./feedgen.sqlite3"
+
+# The path to a cache directory. Optional.
+# cache-dir = "/var/cache/feedgen/"
+
+# The global fetch interval for feeds. Defaults to 2 hours.
+# fetch-interval = 7200
+# fetch-interval = "1h30m"
+
+# Feedgen adds a random delay before the first update of a feed.
+# This option controls the maximum duration of the delay.
+# max-initial-fetch-sleep = "45s"
+
+# `feeds` is a map of feeds.
+# The key is used as the feed id in URLs and must be unique.
+[feeds.hn]
+# The URL to the source page.
+request-url = "https://news.ycombinator.com/news"
+
+# A feed-specific update interval. Optional.
+fetch-interval = "1h"
+
+# Every feed must have an extractor that parses the source page into feed
+# entries.
+[feeds.hn.extractor]
+# An extractor algorithm to use. Other options in this section are specific to
+# the algorithm. Here the XPath extractor is used.
+kind = "xpath"
+
+# An XPath expression that returns a nodeset of entries. For each returned node,
+# all the other XPath expressions are evaluated relative to it to extract entry
+# fields.
+entry = "//tr[@class='athing']"
+
+# An XPath expression returning a unique identifier of an entry.
+# Feedgen uses it to identify entries: if several entries have the same id, only
+# one will be selected.
+# Must be non-empty.
+id = "@id"
+
+# An XPath expression returning the entry title.
+# Must be non-empty.
+title = ".//span[@class='titleline']/a"
+
+# An XPath expression returning the entry description.
+description = ".//span[@class='titleline']//text()"
+
+# An XPath expression returning the entry URL.
+# Must be a valid URL; in particular, it must not use relative links.
+url = ".//span[@class='titleline']/a/@href"
+
+# An XPath expression returning the author of the entry.
+# Optional.
+author = "following-sibling::tr//a[@class='hnuser']"
