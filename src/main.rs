@@ -18,7 +18,7 @@ use state::State;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::error;
-use tracing::level_filters::LevelFilter;
+use tracing::Level;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
@@ -27,7 +27,8 @@ fn set_up_logging() {
         .with(tracing_subscriber::fmt::layer())
         .with(
             EnvFilter::builder()
-                .with_default_directive(LevelFilter::INFO.into())
+                .with_regex(false)
+                .with_default_directive(Level::INFO.into())
                 .with_env_var("FEEDGEN_LOG")
                 .from_env_lossy(),
         )
