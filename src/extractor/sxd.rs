@@ -505,6 +505,21 @@ fn parse_html(html: &str) -> Package {
     storage.into_package()
 }
 
+fn xpath_value_to_string(value: Value<'_>) -> String {
+    if let Value::Nodeset(nodes) = value {
+        // concatenate all nodes
+        let mut s = String::new();
+
+        for node in nodes.document_order() {
+            s.push_str(&node.string_value());
+        }
+
+        s
+    } else {
+        value.into_string()
+    }
+}
+
 pub struct XPathExtractor {
     entry: XPath,
     id: XPath,
@@ -554,15 +569,19 @@ impl Extractor for XPathExtractor {
         for (idx, entry) in entries.document_order().into_iter().enumerate() {
             let idx = idx + 1;
 
-            let find_one = |xpath: &XPath, what: &str| {
-                let Ok(value) = xpath.evaluate(&xpath_ctx, entry) else {
-                    warn!("Could not apply the {what} XPath expression to entry #{idx}");
-                    return None;
+            let find_one = |xpath: &XPath, what: &str, allow_empty: bool| {
+                let value = match xpath.evaluate(&xpath_ctx, entry) {
+                    Ok(value) => value,
+
+                    Err(e) => {
+                        warn!("Could not apply the {what} XPath expression to entry #{idx}: {e:#}");
+                        return None;
+                    }
                 };
 
-                let s = value.into_string();
+                let s = xpath_value_to_string(value);
 
-                if s.is_empty() {
+                if s.is_empty() && !allow_empty {
                     warn!("The {what} XPath expression returned an empty string");
 
                     None
@@ -571,16 +590,16 @@ impl Extractor for XPathExtractor {
                 }
             };
 
-            let Some(id) = find_one(&self.id, "id") else {
+            let Some(id) = find_one(&self.id, "id", false) else {
                 continue;
             };
-            let Some(title) = find_one(&self.title, "title") else {
+            let Some(title) = find_one(&self.title, "title", false) else {
                 continue;
             };
-            let Some(description) = find_one(&self.description, "description") else {
+            let Some(description) = find_one(&self.description, "description", true) else {
                 continue;
             };
-            let Some(url) = find_one(&self.url, "url") else {
+            let Some(url) = find_one(&self.url, "url", false) else {
                 continue;
             };
             let url = match Url::parse(&url) {
@@ -596,7 +615,7 @@ impl Extractor for XPathExtractor {
             let author = self
                 .author
                 .as_ref()
-                .and_then(|xpath| find_one(xpath, "author"));
+                .and_then(|xpath| find_one(xpath, "author", false));
 
             result.push(Entry {
                 id,

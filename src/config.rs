@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 
 use anyhow::{anyhow, Context, Result};
-use regex_lite::Regex;
+use regex_lite::{Regex, RegexBuilder};
 use reqwest::Url;
 use serde::de::Visitor;
 use serde::{Deserialize, Deserializer};
@@ -136,12 +136,16 @@ impl<'de> Deserialize<'de> for Duration {
                 static REGEXP: OnceLock<Regex> = OnceLock::new();
 
                 let regexp = REGEXP.get_or_init(|| {
-                    Regex::new(
-                        r"^(?<days>:(\d+)d)?\s*\
-                        (?<hours>:(\d+)h)?\s*\
-                        (?<minutes>:(\d+)m)?\s*\
-                        (?<seconds>:(\d+)s)?$",
+                    RegexBuilder::new(r"
+                        ^
+                        (?:(?<days>    \d+)d)? \s*
+                        (?:(?<hours>   \d+)h)? \s*
+                        (?:(?<minutes> \d+)m)? \s*
+                        (?:(?<seconds> \d+)s)?
+                        $",
                     )
+                    .ignore_whitespace(true)
+                    .build()
                     .unwrap()
                 });
                 let Some(captures) = regexp.captures(v) else {
@@ -149,14 +153,12 @@ impl<'de> Deserialize<'de> for Duration {
                 };
 
                 let parse = |name: &str| {
-                    let s = &captures[name];
-
-                    if s.is_empty() {
-                        Ok(None)
-                    } else {
+                    if let Some(s) = captures.name(name).map(|m| m.as_str()) {
                         s.parse::<u64>()
                             .map(Some)
                             .map_err(|e| E::custom(format!("could not parse {name} (`{s}`): {e}")))
+                    } else {
+                        Ok(None)
                     }
                 };
 
