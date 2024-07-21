@@ -13,15 +13,16 @@ use sxd_document::dom::{
     ChildOfElement, ChildOfRoot, Comment, Document, Element, ParentOfChild, ProcessingInstruction,
     Root, Text,
 };
-use sxd_document::writer::format_document;
 use sxd_document::{Package, QName};
 use sxd_xpath::{Context, Value};
-use tracing::{enabled, trace, warn, Level};
+use tracing::{debug, warn};
 
 use crate::config;
 use crate::xpath::XPath;
 
 use super::{Entry, Extractor};
+
+const HTTP_XMLNS_URI: &str = "http://www.w3.org/1999/xhtml";
 
 #[derive(Default)]
 struct SxdSinkStorage {
@@ -77,6 +78,13 @@ fn qual_name_to_qname(qual_name: &QualName) -> QName<'_> {
         QName::new(&qual_name.local)
     } else {
         QName::with_namespace_uri(Some(&*qual_name.ns), &qual_name.local)
+    }
+}
+
+fn set_default_namespace(handle: SxdHandle<'_>) {
+    if let SxdHandle::Element(element) = handle {
+        element.register_prefix("html", HTTP_XMLNS_URI);
+        element.set_default_namespace_uri(Some(HTTP_XMLNS_URI));
     }
 }
 
@@ -231,7 +239,7 @@ impl<'s> TreeSink for SxdSink<'s> {
     fn finish(self) {}
 
     fn parse_error(&mut self, msg: Cow<'static, str>) {
-        trace!("Encountered an HTML parsing error: {msg}");
+        debug!("Encountered an HTML parsing error: {msg}");
     }
 
     fn get_document(&mut self) -> Self::Handle {
@@ -260,6 +268,10 @@ impl<'s> TreeSink for SxdSink<'s> {
             .document()
             .create_element(qual_name_to_qname(&name));
         self.intern_name(element.name());
+
+        if let Some(prefix) = &name.prefix {
+            element.register_prefix(prefix, &name.ns);
+        }
 
         if flags.template {
             let pkg_id = self.storage.pkgs.len();
@@ -315,7 +327,11 @@ impl<'s> TreeSink for SxdSink<'s> {
         };
 
         match parent {
-            SxdHandle::Root(root) => root.append_child(ChildOfRoot::try_from(handle).unwrap()),
+            SxdHandle::Root(root) => {
+                set_default_namespace(handle);
+                root.append_child(ChildOfRoot::try_from(handle).unwrap());
+            }
+
             SxdHandle::Comment(_) => panic!("appending a child to a comment node"),
             SxdHandle::Element(element) => {
                 element.append_child(ChildOfElement::try_from(handle).unwrap())
@@ -377,12 +393,19 @@ impl<'s> TreeSink for SxdSink<'s> {
         match parent {
             ParentOfChild::Root(root) => {
                 let mut children = sibling.preceding_siblings().unwrap();
+
                 children.push(match new_node {
-                    NodeOrText::AppendNode(handle) => handle.try_into().unwrap(),
+                    NodeOrText::AppendNode(handle) => {
+                        set_default_namespace(handle);
+
+                        handle.try_into().unwrap()
+                    }
+
                     NodeOrText::AppendText(_) => {
                         panic!("trying to add a text node as a child of the root node")
                     }
                 });
+
                 children.push(TryFrom::try_from(*sibling).unwrap());
                 children.extend(sibling.following_siblings().unwrap());
                 let children = children
@@ -441,7 +464,9 @@ impl<'s> TreeSink for SxdSink<'s> {
             SxdHandle::Root(root) => {
                 let children = children
                     .into_iter()
-                    .map(|child| ChildOfRoot::try_from(SxdHandle::from(child)).unwrap());
+                    .map(SxdHandle::from)
+                    .inspect(|handle| set_default_namespace(*handle))
+                    .map(|child| ChildOfRoot::try_from(child).unwrap());
                 root.append_children(children);
             }
 
@@ -505,15 +530,9 @@ impl XPathExtractor {
 impl Extractor for XPathExtractor {
     fn extract(&mut self, html: &str) -> Result<Vec<Entry>> {
         let html = parse_html(html);
-        let mut result = vec![];
-        let xpath_ctx = Context::new();
-
-        if enabled!(Level::TRACE) {
-            let mut buf = vec![];
-            let _ = format_document(&html.as_document(), &mut buf);
-            let s = String::from_utf8_lossy(&buf);
-            trace!(html = %s);
-        }
+        let mut xpath_ctx = Context::new();
+        xpath_ctx.set_namespace("html", HTTP_XMLNS_URI);
+        xpath_ctx.set_default_namespace_uri(Some(HTTP_XMLNS_URI.into()));
 
         let entries = self
             .entry
@@ -530,6 +549,8 @@ impl Extractor for XPathExtractor {
             bail!("the entry XPath expression returned a {expected} instead of a node set");
         };
 
+        let mut result = vec![];
+
         for (idx, entry) in entries.document_order().into_iter().enumerate() {
             let idx = idx + 1;
 
@@ -539,7 +560,15 @@ impl Extractor for XPathExtractor {
                     return None;
                 };
 
-                Some(value.into_string()).filter(|s| !s.is_empty())
+                let s = value.into_string();
+
+                if s.is_empty() {
+                    warn!("The {what} XPath expression returned an empty string");
+
+                    None
+                } else {
+                    Some(s)
+                }
             };
 
             let Some(id) = find_one(&self.id, "id") else {

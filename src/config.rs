@@ -18,6 +18,10 @@ fn default_fetch_interval() -> Duration {
     Config::default().fetch_interval
 }
 
+fn default_max_initial_fetch_sleep() -> Duration {
+    Config::default().max_initial_fetch_sleep
+}
+
 #[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "kebab-case")]
 pub struct Config {
@@ -28,6 +32,9 @@ pub struct Config {
 
     #[serde(default = "default_fetch_interval")]
     pub fetch_interval: Duration,
+
+    #[serde(default = "default_max_initial_fetch_sleep")]
+    pub max_initial_fetch_sleep: Duration,
 }
 
 impl Config {
@@ -51,6 +58,7 @@ impl Default for Config {
             db_path: "./feedgen.sqlite3".into(),
             cache_dir: None,
             fetch_interval: Duration::from_secs(7200),
+            max_initial_fetch_sleep: Duration::from_secs(45),
             feeds: Default::default(),
         }
     }

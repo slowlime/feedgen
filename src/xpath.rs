@@ -5,7 +5,7 @@ use std::fmt::Formatter;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use anyhow::{anyhow, Context as _, Result};
+use anyhow::{Context as _, Result};
 use serde::de::Visitor;
 use serde::{Deserialize, Deserializer};
 use sxd_xpath::nodeset::Node;
@@ -30,9 +30,7 @@ impl XPath {
     pub fn new(s: String) -> Result<Self> {
         let xpath = Factory::new()
             .build(&s)
-            .context("could not compile the XPath expression")?
-            // what's going on with the API design here?
-            .ok_or_else(|| anyhow!("no XPath expression was parsed"))?;
+            .context("could not compile the XPath expression")?;
 
         let id = NEXT_XPATH_ID.fetch_add(1, Ordering::Relaxed);
         XPATH_REGISTRY.with_borrow_mut(|registry| {
@@ -46,7 +44,7 @@ impl XPath {
         XPATH_REGISTRY.with_borrow_mut(|registry| {
             f(registry
                 .entry(self.0.id)
-                .or_insert_with(|| Factory::new().build(&self.0.s).unwrap().unwrap()))
+                .or_insert_with(|| Factory::new().build(&self.0.s).unwrap()))
         })
     }
 

@@ -18,7 +18,6 @@ use tracing::{debug, debug_span, error, info, trace, trace_span, Instrument};
 use crate::state::Feed;
 use crate::storage::Storage;
 
-const MAX_INITIAL_SLEEP: Duration = Duration::from_secs(45);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 const READ_TIMEOUT: Duration = Duration::from_secs(10);
 const TOTAL_TIMEOUT: Duration = Duration::from_secs(300);
@@ -27,6 +26,7 @@ pub struct Fetcher {
     feeds: Arc<HashMap<String, Feed>>,
     cache_dir: Option<PathBuf>,
     storage: Arc<Storage>,
+    max_initial_sleep: Duration,
 }
 
 impl Fetcher {
@@ -34,11 +34,13 @@ impl Fetcher {
         feeds: Arc<HashMap<String, Feed>>,
         cache_dir: Option<PathBuf>,
         storage: Arc<Storage>,
+        max_initial_sleep: Duration,
     ) -> Self {
         Self {
             feeds,
             cache_dir,
             storage,
+            max_initial_sleep,
         }
     }
 
@@ -55,12 +57,14 @@ impl Fetcher {
                 );
 
                 let builder = if let Some(path) = self.cache_dir {
+                    debug!("Using a file cache at {}", path.display());
                     builder.with(Cache(HttpCache {
                         mode: Default::default(),
                         manager: CACacheManager { path },
                         options: Default::default(),
                     }))
                 } else {
+                    debug!("Using an in-memory cache");
                     builder.with(Cache(HttpCache {
                         mode: Default::default(),
                         manager: MokaManager::new(MokaCache::builder().max_capacity(8192).build()),
@@ -83,6 +87,7 @@ impl Fetcher {
                         rng,
                         cancel: cancel.clone(),
                         http_client: http_client.clone(),
+                        max_initial_sleep: self.max_initial_sleep,
                     };
 
                     tokio::spawn(task.run().instrument(debug_span!("run", feed_name = %name)));
@@ -105,11 +110,12 @@ struct Task {
     rng: SmallRng,
     cancel: CancellationToken,
     http_client: ClientWithMiddleware,
+    max_initial_sleep: Duration,
 }
 
 impl Task {
     async fn run(mut self) {
-        let offset = self.rng.gen_range(Duration::ZERO..MAX_INITIAL_SLEEP);
+        let offset = self.rng.gen_range(Duration::ZERO..self.max_initial_sleep);
 
         let initial_sleep = if let Ok(Some(last_update)) = self.last_update().await {
             trace!(%last_update, "Found the last update time");

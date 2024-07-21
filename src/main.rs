@@ -88,6 +88,7 @@ async fn start(cancel: CancellationToken) -> Result<JoinSet<Result<()>>> {
         state.feeds.clone(),
         state.cfg.cache_dir.clone(),
         state.storage.clone(),
+        state.cfg.max_initial_fetch_sleep.into(),
     );
     let server = Server::new(state).await?;
 
