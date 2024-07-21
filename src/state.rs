@@ -46,6 +46,7 @@ pub struct Feed {
     pub request_url: Url,
     pub extractor: Mutex<Box<dyn Extractor + Send>>,
     pub fetch_interval: Duration,
+    pub enabled: bool,
 }
 
 impl Feed {
@@ -57,6 +58,7 @@ impl Feed {
             request_url: feed.request_url.clone(),
             extractor,
             fetch_interval,
+            enabled: feed.enabled,
         }
     }
 }

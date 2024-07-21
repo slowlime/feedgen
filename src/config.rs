@@ -64,9 +64,16 @@ impl Default for Config {
     }
 }
 
+fn default_feed_enabled() -> bool {
+    true
+}
+
 #[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "kebab-case")]
 pub struct Feed {
+    #[serde(default = "default_feed_enabled")]
+    pub enabled: bool,
+
     pub request_url: Url,
     pub extractor: ExtractorConfig,
     pub fetch_interval: Option<Duration>,

@@ -78,7 +78,13 @@ impl Fetcher {
             {
                 let mut thread_rng = thread_rng();
 
-                for name in self.feeds.keys() {
+                for (name, feed) in &*self.feeds {
+                    if !feed.enabled {
+                        info!("Skipping the feed `{name}`: disabled in the config");
+
+                        continue;
+                    }
+
                     let rng = SmallRng::from_rng(&mut thread_rng).unwrap();
                     let task = Task {
                         feeds: self.feeds.clone(),
