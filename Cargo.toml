@@ -1,6 +1,6 @@
 [package]
 name = "feedgen"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 [dependencies]
@@ -23,7 +23,7 @@ skyscraper = "0.6.4"
 sqlx = { version = "0.7.4", features = ["macros", "migrate", "runtime-tokio", "sqlite", "time"], default-features = false }
 sxd-document = "0.3.2"
 sxd-xpath = { version = "0.4.2", git = "https://github.com/slowlime/sxd-xpath.git", branch = "default-ns" }
-time = { version = "0.3.36" }
+time = { version = "0.3.36", features = ["formatting", "local-offset", "parsing"] }
 tokio = { version = "1.38.0", features = ["full"] }
 tokio-util = "0.7.11"
 toml = "0.8.14"

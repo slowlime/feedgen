@@ -14,6 +14,8 @@ use sxd_document::dom::{
 };
 use sxd_document::{Package, QName};
 use sxd_xpath::{Context, Value};
+use time::format_description::well_known::Rfc3339;
+use time::OffsetDateTime;
 use tracing::{debug, warn};
 
 use crate::config;
@@ -526,6 +528,10 @@ pub struct XPathExtractor {
     description: XPath,
     url: XPath,
     author: Option<XPath>,
+    pub_date: Option<(
+        XPath,
+        Box<dyn time::parsing::Parsable + Send + Sync + 'static>,
+    )>,
 }
 
 impl XPathExtractor {
@@ -537,12 +543,22 @@ impl XPathExtractor {
             description: cfg.description.clone(),
             url: cfg.url.clone(),
             author: cfg.author.clone(),
+            pub_date: cfg.pub_date.clone().map(|xpath| {
+                (
+                    xpath,
+                    if let Some(fmt) = &cfg.pub_date_format {
+                        Box::new(fmt.clone().into_inner()) as _
+                    } else {
+                        Box::new(Rfc3339) as _
+                    },
+                )
+            }),
         }
     }
 }
 
 impl Extractor for XPathExtractor {
-    fn extract<'c>(&mut self, ctx: ExtractorContext<'c>, html: &str) -> Result<Vec<Entry>> {
+    fn extract(&mut self, ctx: ExtractorContext<'_>, html: &str) -> Result<Vec<Entry>> {
         let html = parse_html(html);
         let mut xpath_ctx = Context::new();
         xpath_ctx.set_namespace("html", HTTP_XMLNS_URI);
@@ -616,15 +632,23 @@ impl Extractor for XPathExtractor {
                 .as_ref()
                 .and_then(|xpath| find_one(xpath, "author", false));
 
+            let pub_date = if let Some((xpath, fmt)) = &self.pub_date {
+                find_one(xpath, "pub_date", false).and_then(|s| {
+                    OffsetDateTime::parse(&s, fmt)
+                        .inspect_err(|e| warn!("The date `{s}` could not be parsed: {e:#}"))
+                        .ok()
+                })
+            } else {
+                None
+            };
+
             result.push(Entry {
                 id,
                 title,
                 description,
                 url,
                 author,
-
-                // TODO
-                pub_date: None,
+                pub_date,
             });
         }
 

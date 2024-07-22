@@ -1,18 +1,18 @@
+mod types;
+
 use std::collections::HashMap;
-use std::fmt;
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::PathBuf;
-use std::sync::OnceLock;
 
 use anyhow::{anyhow, Context, Result};
-use regex_lite::{Regex, RegexBuilder};
 use reqwest::Url;
-use serde::de::Visitor;
-use serde::{Deserialize, Deserializer};
+use serde::Deserialize;
 use tracing::{debug, info};
 
 use crate::xpath::XPath;
+
+pub use self::types::*;
 
 fn default_fetch_interval() -> Duration {
     Config::default().fetch_interval
@@ -23,7 +23,7 @@ fn default_max_initial_fetch_sleep() -> Duration {
 }
 
 #[derive(Deserialize, Debug, Clone)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Config {
     pub bind_addr: String,
     pub db_path: PathBuf,
@@ -69,7 +69,7 @@ fn default_feed_enabled() -> bool {
 }
 
 #[derive(Deserialize, Debug, Clone)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Feed {
     #[serde(default = "default_feed_enabled")]
     pub enabled: bool,
@@ -80,14 +80,14 @@ pub struct Feed {
 }
 
 #[derive(Deserialize, Debug, Clone)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
+#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum ExtractorConfig {
     #[serde(rename = "xpath")]
     XPath(XPathExtractorConfig),
 }
 
 #[derive(Deserialize, Debug, Clone)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct XPathExtractorConfig {
     pub entry: XPath,
     pub id: XPath,
@@ -95,115 +95,8 @@ pub struct XPathExtractorConfig {
     pub description: XPath,
     pub url: XPath,
     pub author: Option<XPath>,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Duration(std::time::Duration);
-
-impl Duration {
-    pub fn from_secs(seconds: u64) -> Self {
-        Self(std::time::Duration::from_secs(seconds))
-    }
-}
-
-impl<'de> Deserialize<'de> for Duration {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct DurationVisitor;
-
-        impl<'de> Visitor<'de> for DurationVisitor {
-            type Value = Duration;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                write!(formatter, "a duration")
-            }
-
-            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                self.visit_u64(v.try_into().map_err(E::custom)?)
-            }
-
-            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                Ok(Duration::from_secs(v))
-            }
-
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                use serde::de::Unexpected;
-
-                static REGEXP: OnceLock<Regex> = OnceLock::new();
-
-                let regexp = REGEXP.get_or_init(|| {
-                    RegexBuilder::new(r"
-                        ^
-                        (?:(?<days>    \d+)d)? \s*
-                        (?:(?<hours>   \d+)h)? \s*
-                        (?:(?<minutes> \d+)m)? \s*
-                        (?:(?<seconds> \d+)s)?
-                        $",
-                    )
-                    .ignore_whitespace(true)
-                    .build()
-                    .unwrap()
-                });
-                let Some(captures) = regexp.captures(v) else {
-                    return Err(E::invalid_value(Unexpected::Str(v), &"a duration"));
-                };
-
-                let parse = |name: &str| {
-                    if let Some(s) = captures.name(name).map(|m| m.as_str()) {
-                        s.parse::<u64>()
-                            .map(Some)
-                            .map_err(|e| E::custom(format!("could not parse {name} (`{s}`): {e}")))
-                    } else {
-                        Ok(None)
-                    }
-                };
-
-                let days = parse("days")?;
-                let hours = parse("hours")?;
-                let minutes = parse("minutes")?;
-                let seconds = parse("seconds")?;
-
-                if days.is_none() && hours.is_none() && minutes.is_none() && seconds.is_none() {
-                    return Err(E::invalid_value(Unexpected::Str(v), &"a duration"));
-                }
-
-                days.unwrap_or(0)
-                    .checked_mul(24)
-                    .and_then(|h| h.checked_add(hours.unwrap_or(0)))
-                    .and_then(|h| h.checked_mul(60))
-                    .and_then(|m| m.checked_add(minutes.unwrap_or(0)))
-                    .and_then(|m| m.checked_mul(60))
-                    .and_then(|s| s.checked_add(seconds.unwrap_or(0)))
-                    .map(Duration::from_secs)
-                    .ok_or_else(|| E::custom(format!("duration `{v}` is too large")))
-            }
-        }
-
-        deserializer.deserialize_str(DurationVisitor)
-    }
-}
-
-impl From<std::time::Duration> for Duration {
-    fn from(duration: std::time::Duration) -> Self {
-        Self(duration)
-    }
-}
-
-impl From<Duration> for std::time::Duration {
-    fn from(duration: Duration) -> Self {
-        duration.0
-    }
+    pub pub_date: Option<XPath>,
+    pub pub_date_format: Option<DateTimeFormat>,
 }
 
 pub fn load(search_paths: &[PathBuf]) -> Result<Config> {
