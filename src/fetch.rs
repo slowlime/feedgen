@@ -13,7 +13,7 @@ use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use tokio::time::Instant;
 use tokio::{select, time};
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, debug_span, error, info, trace, trace_span, Instrument};
+use tracing::{debug, error, info, info_span, trace, Instrument};
 
 use crate::extractor::Context as ExtractorContext;
 use crate::state::Feed;
@@ -97,7 +97,7 @@ impl Fetcher {
                         max_initial_sleep: self.max_initial_sleep,
                     };
 
-                    tokio::spawn(task.run().instrument(debug_span!("run", feed_name = %name)));
+                    tokio::spawn(task.run().instrument(info_span!("run", feed_name = %name)));
                 }
             }
 
@@ -105,7 +105,7 @@ impl Fetcher {
 
             Ok(())
         }
-        .instrument(trace_span!("fetcher"))
+        .instrument(info_span!("fetcher"))
         .await
     }
 }
@@ -136,12 +136,26 @@ impl Task {
 
         debug!("Scheduling the next update in {}s", initial_sleep.as_secs());
         let mut next_fetch = pin!(time::sleep(initial_sleep));
+        let force_update_notify = self.feed().force_update.clone().unwrap();
+        let mut force_update = pin!(force_update_notify.notified());
 
         loop {
             select! {
                 _ = self.cancel.cancelled() => {
                     debug!("Received a cancellation signal; exiting");
                     break;
+                }
+
+                _ = &mut force_update => {
+                    force_update.set(force_update_notify.notified());
+
+                    let deadline = next_fetch.deadline();
+                    let now = Instant::now();
+                    let preempted_by = deadline.saturating_duration_since(now).as_secs();
+                    info!(
+                        "Received a forced feed update request \
+                            (preempted the next scheduled update by {preempted_by}s)"
+                    );
                 }
 
                 _ = &mut next_fetch => {}

@@ -29,3 +29,6 @@ feedgen --help
 Once Feedgen is running, a web interface will be served at the provided address
 with a list of all configured feeds.
 Point your RSS reader to the listed RSS feed links.
+
+To force a feed update without waiting for the next scheduled update, send a
+POST request to `/feeds/:name/update`.

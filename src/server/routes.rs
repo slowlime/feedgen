@@ -17,6 +17,8 @@ use crate::server::convert_errors;
 use crate::state::State as AppState;
 use crate::template::Template;
 
+use super::responses::FeedCannotBeUpdated;
+
 const MAX_FEED_ENTRY_COUNT: usize = 100;
 
 pub async fn index(State(state): State<AppState>) -> Result<Html<String>> {
@@ -149,4 +151,12 @@ pub async fn get_feed(
         [(header::CONTENT_TYPE, "application/rss+xml")],
         channel.to_string(),
     ))
+}
+
+pub async fn update_feed(State(state): State<AppState>, Path(name): Path<String>) -> Result<()> {
+    let feed = state.feeds.get(&name).ok_or(StatusCode::NOT_FOUND)?;
+    let notify = feed.force_update.as_ref().ok_or(FeedCannotBeUpdated { name })?;
+    notify.notify_waiters();
+
+    Ok(())
 }

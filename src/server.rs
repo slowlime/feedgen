@@ -1,3 +1,4 @@
+mod responses;
 mod routes;
 
 use std::future::Future;
@@ -35,7 +36,7 @@ pub struct Server {
 
 impl Server {
     pub async fn new(state: State) -> Result<Self> {
-        use axum::routing::get;
+        use axum::routing::{get, post};
 
         let bind_addr = &state.cfg.bind_addr;
         let socket = TcpListener::bind(bind_addr)
@@ -45,6 +46,7 @@ impl Server {
         let app = Router::new()
             .route("/", get(routes::index))
             .route("/feeds/:name", get(routes::get_feed))
+            .route("/feeds/:name/update", post(routes::update_feed))
             .layer(
                 ServiceBuilder::new().layer(
                     TraceLayer::new_for_http()

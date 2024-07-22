@@ -5,6 +5,7 @@ use std::time::Duration;
 use anyhow::Result;
 use handlebars::Handlebars;
 use reqwest::Url;
+use tokio::sync::Notify;
 
 use crate::config::{self, Config, ExtractorConfig};
 use crate::extractor::{Extractor, XPathExtractor};
@@ -47,6 +48,7 @@ pub struct Feed {
     pub extractor: Mutex<Box<dyn Extractor + Send>>,
     pub fetch_interval: Duration,
     pub enabled: bool,
+    pub force_update: Option<Arc<Notify>>,
 }
 
 impl Feed {
@@ -59,6 +61,7 @@ impl Feed {
             extractor,
             fetch_interval,
             enabled: feed.enabled,
+            force_update: feed.enabled.then(|| Arc::new(Notify::new())),
         }
     }
 }
