@@ -8,7 +8,7 @@ use reqwest::Url;
 use tokio::sync::Notify;
 
 use crate::config::{self, Config, ExtractorConfig};
-use crate::extractor::{Extractor, XPathExtractor};
+use crate::extractor::{Extractor, LuaExtractor, XPathExtractor};
 use crate::storage::Storage;
 use crate::template;
 
@@ -23,7 +23,7 @@ pub struct State {
 impl State {
     pub async fn new(cfg: Config) -> Result<Self> {
         let storage = Arc::new(Storage::new(&cfg.db_path).await?);
-        let feeds = Arc::new(Self::make_feeds(&cfg));
+        let feeds = Arc::new(Self::make_feeds(&cfg)?);
         let cfg = Arc::new(cfg);
         let template = Arc::new(template::new());
 
@@ -35,10 +35,10 @@ impl State {
         })
     }
 
-    fn make_feeds(cfg: &Config) -> HashMap<String, Feed> {
+    fn make_feeds(cfg: &Config) -> Result<HashMap<String, Feed>> {
         cfg.feeds
             .iter()
-            .map(|(name, feed)| (name.clone(), Feed::new(cfg, feed)))
+            .map(|(name, feed)| Feed::new(cfg, feed).map(|feed| (name.clone(), feed)))
             .collect()
     }
 }
@@ -52,22 +52,23 @@ pub struct Feed {
 }
 
 impl Feed {
-    fn new(cfg: &Config, feed: &config::Feed) -> Self {
+    fn new(cfg: &Config, feed: &config::Feed) -> Result<Self> {
         let fetch_interval = feed.fetch_interval.unwrap_or(cfg.fetch_interval).into();
-        let extractor = Mutex::new(make_extractor(&feed.extractor));
+        let extractor = Mutex::new(make_extractor(&feed.extractor)?);
 
-        Feed {
+        Ok(Feed {
             request_url: feed.request_url.clone(),
             extractor,
             fetch_interval,
             enabled: feed.enabled,
             force_update: feed.enabled.then(|| Arc::new(Notify::new())),
-        }
+        })
     }
 }
 
-fn make_extractor(cfg: &ExtractorConfig) -> Box<dyn Extractor + Send> {
-    match cfg {
+fn make_extractor(cfg: &ExtractorConfig) -> Result<Box<dyn Extractor + Send>> {
+    Ok(match cfg {
         ExtractorConfig::XPath(cfg) => Box::new(XPathExtractor::from_cfg(cfg)),
-    }
+        ExtractorConfig::Lua(cfg) => Box::new(LuaExtractor::from_cfg(cfg)?),
+    })
 }

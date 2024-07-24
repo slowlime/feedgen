@@ -84,6 +84,8 @@ pub struct Feed {
 pub enum ExtractorConfig {
     #[serde(rename = "xpath")]
     XPath(XPathExtractorConfig),
+
+    Lua(LuaExtractorConfig),
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -97,6 +99,12 @@ pub struct XPathExtractorConfig {
     pub author: Option<XPath>,
     pub pub_date: Option<XPath>,
     pub pub_date_format: Option<DateTimeFormat>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct LuaExtractorConfig {
+    pub path: PathBuf,
 }
 
 pub fn load(search_paths: &[PathBuf]) -> Result<Config> {

@@ -1,9 +1,11 @@
+mod lua;
 mod xpath;
 
 use anyhow::Result;
 use reqwest::Url;
 use time::OffsetDateTime;
 
+pub use lua::LuaExtractor;
 pub use xpath::XPathExtractor;
 
 #[derive(Debug, Clone)]
@@ -31,5 +33,5 @@ impl<'c> Context<'c> {
 }
 
 pub trait Extractor {
-    fn extract<'c>(&mut self, ctx: Context<'c>, html: &str) -> Result<Vec<Entry>>;
+    fn extract(&mut self, ctx: Context<'_>, html: &str) -> Result<Vec<Entry>>;
 }
