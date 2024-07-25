@@ -5,6 +5,7 @@ Fetches pages periodically and extracts entries based on configuration rules.
 Supported extractors:
 
 - XPath (extractor kind `xpath`).
+- Lua (extractor kind `lua`).
 
 ## Building
 Use `cargo`:

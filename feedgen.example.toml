@@ -74,3 +74,14 @@ pub-date = "concat((following-sibling::tr//span[@class='age']/@title)[1], 'Z')"
 # description of the syntax. Note that it must provide timezone information!
 # Defaults to the RFC3339 format.
 # pub-date-format = "[year]-[month]-[day] [hour]:[minute]:[second] [offset_hour sign:mandatory][offset_minute]"
+
+[feeds.debian-news]
+request-url = "https://www.debian.org/News/2024/"
+
+[feeds.debian-news.extractor]
+# This feed uses a Lua script to extract entries from the source page.
+kind = "lua"
+
+# The path to the Lua script. As mentioned above, all paths in the config are
+# resolved relative to its location.
+path = "lua/debian-news.example.lua"
