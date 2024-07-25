@@ -2,8 +2,10 @@
 bind-addr = "127.0.0.1:20654"
 
 # The path to a Feedgen database file.
-# db-path = "/var/lib/feedgen/feedgen.sqlite3"
+# All paths are resolved relative to the config file's location
+# (e.g., the uncommented path resolves to a sibling file).
 db-path = "./feedgen.sqlite3"
+# db-path = "/var/lib/feedgen/feedgen.sqlite3"
 
 # The path to a cache directory. Optional.
 # cache-dir = "/var/cache/feedgen/"
