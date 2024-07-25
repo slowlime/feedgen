@@ -1,3 +1,4 @@
+use std::ops::Deref;
 use std::sync::Arc;
 
 use derive_more::From;
@@ -9,18 +10,220 @@ use scraper::node::{Attrs, Classes, Comment, Doctype, ProcessingInstruction, Tex
 use scraper::selector::ToCss;
 use scraper::{element_ref, Node};
 use scraper::{CaseSensitivity, ElementRef, Html, Selector};
+use time::{Date, Month, OffsetDateTime, Time, UtcOffset};
+use time_tz::{timezones, OffsetResult, PrimitiveDateTimeExt};
+use tracing::warn;
+
+#[derive(From, Clone)]
+#[from(forward)]
+pub struct Buffer(Arc<str>);
+
+impl Buffer {
+    fn to_string(_lua: &Lua, this: &Self, _: ()) -> LuaResult<String> {
+        Ok(this.0.to_string())
+    }
+
+    fn len(_lua: &Lua, this: &Self, _: ()) -> LuaResult<usize> {
+        Ok(this.0.len())
+    }
+}
+
+impl FromLua<'_> for Buffer {
+    fn from_lua(value: LuaValue<'_>, _lua: &Lua) -> LuaResult<Self> {
+        match value {
+            LuaValue::UserData(ud) => ud.borrow::<Self>().map(|this| this.clone()),
+            LuaValue::String(s) => Ok(Buffer(s.to_str()?.into())),
+
+            _ => Err(LuaError::FromLuaConversionError {
+                from: value.type_name(),
+                to: "Buffer",
+                message: Some("expected string or Buffer".into()),
+            }),
+        }
+    }
+}
+
+impl LuaUserData for Buffer {
+    fn add_methods<'lua, M: LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_meta_method("__tostring", Self::to_string);
+        methods.add_meta_method("__len", Self::len);
+    }
+}
+
+impl Deref for Buffer {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+struct Stringified(String);
+
+impl Deref for Stringified {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<'lua> FromLua<'lua> for Stringified {
+    fn from_lua(value: LuaValue<'lua>, _lua: &'lua Lua) -> LuaResult<Self> {
+        if value.is_number() || value.is_string() {
+            Ok(Self(value.to_string()?))
+        } else if let Some(to_string) = match &value {
+            LuaValue::Table(tbl) => {
+                if let Some(mt) = tbl.get_metatable() {
+                    mt.raw_get::<_, Option<LuaFunction<'lua>>>("__tostring")?
+                } else {
+                    None
+                }
+            }
+
+            LuaValue::UserData(ud) => ud.get_metatable()?.get("__tostring")?,
+
+            _ => None,
+        } {
+            let result: LuaValue<'lua> = to_string.call(value)?;
+
+            if let Some(s) = result.as_str() {
+                Ok(Self(s.into()))
+            } else {
+                Err(LuaError::runtime("'__tostring' must return a string"))
+            }
+        } else {
+            Err(LuaError::FromLuaConversionError {
+                from: value.type_name(),
+                to: "string",
+                message: Some(
+                    "expected string, number, or table/userdata with __tostring metamethod".into(),
+                ),
+            })
+        }
+    }
+}
+
+struct NonEmptyString(String);
+
+impl<'lua> FromLua<'lua> for NonEmptyString {
+    fn from_lua(value: LuaValue<'lua>, lua: &'lua Lua) -> LuaResult<Self> {
+        let s = Stringified::from_lua(value, lua)?;
+
+        if s.is_empty() {
+            Err(LuaError::runtime("string must be non-empty"))
+        } else {
+            Ok(Self(s.0))
+        }
+    }
+}
+
+struct PubDate(OffsetDateTime);
+
+impl<'lua> FromLua<'lua> for PubDate {
+    fn from_lua(value: LuaValue<'lua>, lua: &'lua Lua) -> LuaResult<Self> {
+        let tbl = LuaTable::from_lua(value, lua)?;
+        let year: i32 = tbl.get("year")?;
+        let month: u8 = tbl.get("month")?;
+        let day: u8 = tbl.get("day")?;
+        let hour: u8 = tbl.get("hour")?;
+        let minute: u8 = tbl.get("minute")?;
+        let second: u8 = tbl.get("second")?;
+        let utc_offset: Option<i16> = tbl.get("utcOffset")?;
+        let tz: Option<NonEmptyString> = tbl.get("tz")?;
+
+        let month = Month::try_from(month)
+            .map_err(|e| LuaError::runtime(format!("month {month} is invalid: {e}")))?;
+        let date = Date::from_calendar_date(year, month, day).map_err(|e| {
+            LuaError::runtime(format!("date {year}-{}-{day} is invalid: {e}", month as u8))
+        })?;
+        let time = Time::from_hms(hour, minute, second).map_err(|e| {
+            LuaError::runtime(format!("time {hour}:{minute}:{second} is invalid: {e}"))
+        })?;
+        let datetime = date.with_time(time);
+
+        if let Some(name) = tz {
+            let name = name.0;
+            let tz = timezones::get_by_name(&name)
+                .ok_or_else(|| LuaError::runtime(format_args!("unknown timezone '{name}'")))?;
+
+            match datetime.assume_timezone(tz) {
+                OffsetResult::Some(dt) => Ok(Self(dt)),
+
+                OffsetResult::Ambiguous(lhs, rhs) => {
+                    warn!(
+                        "Datetime {datetime} is ambiguous in the timezone `{name}`: \
+                            could be {lhs} or {rhs}; picking the former"
+                    );
+
+                    Ok(Self(lhs))
+                }
+
+                OffsetResult::None => Err(LuaError::runtime(format!(
+                    "datetime {datetime} is invalid in timezone '{name}'"
+                ))),
+            }
+        } else if let Some(whole_minutes) = utc_offset {
+            let hours: i8 = whole_minutes.div_euclid(60).try_into().map_err(|_| {
+                LuaError::runtime(format!("UTC offset {whole_minutes} is too large"))
+            })?;
+            let minutes = whole_minutes.rem_euclid(60) as i8;
+            let utc_offset = UtcOffset::from_hms(hours, minutes, 0).map_err(|e| {
+                LuaError::runtime(format!("UTC offset {whole_minutes} is invalid: {e}"))
+            })?;
+
+            Ok(Self(datetime.assume_offset(utc_offset)))
+        } else {
+            Err(LuaError::runtime(
+                "neither 'tz' nor 'utcOffset' was specified",
+            ))
+        }
+    }
+}
+
+pub struct LuaEntry {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    pub url: String,
+    pub author: Option<String>,
+    pub pub_date: Option<OffsetDateTime>,
+}
+
+impl<'lua> FromLua<'lua> for LuaEntry {
+    fn from_lua(value: LuaValue<'lua>, lua: &'lua Lua) -> LuaResult<Self> {
+        let entry = LuaTable::from_lua(value, lua)?;
+        let id: NonEmptyString = entry.get("id")?;
+        let title: NonEmptyString = entry.get("title")?;
+        let description: Stringified = entry.get("description")?;
+        let url: Stringified = entry.get("url")?;
+        let author: Option<Stringified> = entry.get("author")?;
+        let pub_date: Option<PubDate> = entry.get("pubDate")?;
+
+        Ok(LuaEntry {
+            id: id.0,
+            title: title.0,
+            description: description.0,
+            url: url.0,
+            author: author
+                .map(|author| author.0)
+                .filter(|author| !author.is_empty()),
+            pub_date: pub_date.map(|pub_date| pub_date.0),
+        })
+    }
+}
 
 #[derive(From, Clone)]
 pub struct SelectorWrapper(Arc<Selector>);
 
 impl SelectorWrapper {
-    pub fn to_string(_lua: &Lua, this: &Self, _: ()) -> LuaResult<String> {
+    fn to_string(_lua: &Lua, this: &Self, _: ()) -> LuaResult<String> {
         Ok(this.0.to_css_string())
     }
 }
 
 impl FromLua<'_> for SelectorWrapper {
-    fn from_lua(value: LuaValue<'_>, _lua: &'_ Lua) -> LuaResult<Self> {
+    fn from_lua(value: LuaValue<'_>, _lua: &Lua) -> LuaResult<Self> {
         match value {
             LuaValue::UserData(ud) => ud.borrow::<Self>().map(|this| this.clone()),
 
@@ -31,7 +234,7 @@ impl FromLua<'_> for SelectorWrapper {
             _ => Err(LuaError::FromLuaConversionError {
                 from: value.type_name(),
                 to: "Selector",
-                message: None,
+                message: Some("expected string or Selector".into()),
             }),
         }
     }
@@ -83,10 +286,9 @@ struct LuaHtmlSelect {
 impl LuaHtmlSelect {
     fn call(_lua: &Lua, this: &mut Self, _: ()) -> LuaResult<Option<LuaElementRef>> {
         Ok(this.with_mut(|fields| {
-            fields
-                .select
-                .next()
-                .map(|element| LuaElementRef::from_node_id(fields.html.clone(), element.id()).unwrap())
+            fields.select.next().map(|element| {
+                LuaElementRef::from_node_id(fields.html.clone(), element.id()).unwrap()
+            })
         }))
     }
 }
@@ -765,8 +967,20 @@ struct LuaSelect {
     select: element_ref::Select<'this, 'this>,
 }
 
+impl LuaSelect {
+    fn call(_lua: &Lua, this: &mut Self, _: ()) -> LuaResult<Option<LuaElementRef>> {
+        Ok(this.with_mut(|fields| {
+            fields.select.next().map(|element| {
+                LuaElementRef::from_node_id(fields.html.clone(), element.id()).unwrap()
+            })
+        }))
+    }
+}
+
 impl LuaUserData for LuaSelect {
-    // TODO
+    fn add_methods<'lua, M: LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_meta_method_mut("__call", Self::call);
+    }
 }
 
 #[self_referencing]

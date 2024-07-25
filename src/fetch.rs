@@ -209,13 +209,23 @@ impl Task {
             )
         })?;
 
-        let entries = self
-            .feed()
-            .extractor
-            .lock()
-            .unwrap()
-            .extract(ExtractorContext::new(&self.feed().request_url), &body)
-            .context("could not extract feed entries")?;
+        let entries = {
+            let feeds = self.feeds.clone();
+            let name = self.name.clone();
+
+            tokio::task::spawn_blocking(move || {
+                let feed = &feeds[&name];
+
+                feed.extractor
+                    .lock()
+                    .unwrap()
+                    .extract(ExtractorContext::new(&feed.request_url), &body)
+                    .context("could not extract feed entries")
+            })
+            .await
+            .context("running the extractor failed")??
+        };
+
         let count = entries.len();
 
         let mut tx = self.storage.begin().await?;
