@@ -1,7 +1,7 @@
 use std::ops::Deref;
 use std::sync::Arc;
 
-use derive_more::From;
+use derive_more::{From, Into};
 use ego_tree::iter::{Children, Descendants};
 use ego_tree::{NodeId, NodeRef};
 use mlua::prelude::*;
@@ -123,14 +123,14 @@ struct PubDate(OffsetDateTime);
 impl<'lua> FromLua<'lua> for PubDate {
     fn from_lua(value: LuaValue<'lua>, lua: &'lua Lua) -> LuaResult<Self> {
         let tbl = LuaTable::from_lua(value, lua)?;
-        let year: i32 = tbl.get("year")?;
-        let month: u8 = tbl.get("month")?;
-        let day: u8 = tbl.get("day")?;
-        let hour: u8 = tbl.get("hour")?;
-        let minute: u8 = tbl.get("minute")?;
-        let second: u8 = tbl.get("second")?;
-        let utc_offset: Option<i16> = tbl.get("utcOffset")?;
-        let tz: Option<NonEmptyString> = tbl.get("tz")?;
+        let year: i32 = tbl.get("year").context("'year' is invalid")?;
+        let month: u8 = tbl.get("month").context("'month' is invalid")?;
+        let day: u8 = tbl.get("day").context("'day' is invalid")?;
+        let hour: u8 = tbl.get("hour").context("'hour' is invalid")?;
+        let minute: u8 = tbl.get("minute").context("'minute' is invalid")?;
+        let second: u8 = tbl.get("second").context("'second' is invalid")?;
+        let utc_offset: Option<i16> = tbl.get("utcOffset").context("'utcOffset' is invalid")?;
+        let tz: Option<NonEmptyString> = tbl.get("tz").context("'tz' is invalid")?;
 
         let month = Month::try_from(month)
             .map_err(|e| LuaError::runtime(format!("month {month} is invalid: {e}")))?;
@@ -181,6 +181,7 @@ impl<'lua> FromLua<'lua> for PubDate {
     }
 }
 
+#[derive(Clone)]
 pub struct LuaEntry {
     pub id: String,
     pub title: String,
@@ -193,12 +194,12 @@ pub struct LuaEntry {
 impl<'lua> FromLua<'lua> for LuaEntry {
     fn from_lua(value: LuaValue<'lua>, lua: &'lua Lua) -> LuaResult<Self> {
         let entry = LuaTable::from_lua(value, lua)?;
-        let id: NonEmptyString = entry.get("id")?;
-        let title: NonEmptyString = entry.get("title")?;
-        let description: Stringified = entry.get("description")?;
-        let url: Stringified = entry.get("url")?;
-        let author: Option<Stringified> = entry.get("author")?;
-        let pub_date: Option<PubDate> = entry.get("pubDate")?;
+        let id: NonEmptyString = entry.get("id").context("'id' is invalid")?;
+        let title: NonEmptyString = entry.get("title").context("'title' is invalid")?;
+        let description: Stringified = entry.get("description").context("'description' is invalid")?;
+        let url: Stringified = entry.get("url").context("'url' is invalid")?;
+        let author: Option<Stringified> = entry.get("author").context("'author' is invalid")?;
+        let pub_date: Option<PubDate> = entry.get("pubDate").context("'pubDate' is invalid")?;
 
         Ok(LuaEntry {
             id: id.0,
@@ -210,6 +211,26 @@ impl<'lua> FromLua<'lua> for LuaEntry {
                 .filter(|author| !author.is_empty()),
             pub_date: pub_date.map(|pub_date| pub_date.0),
         })
+    }
+}
+
+#[derive(Into, Clone)]
+pub struct LuaEntries(Vec<LuaEntry>);
+
+impl<'lua> FromLua<'lua> for LuaEntries {
+    fn from_lua(value: LuaValue<'lua>, lua: &'lua Lua) -> LuaResult<Self> {
+        let entries = LuaTable::from_lua(value, lua)?;
+        let mut result = vec![];
+
+        for (idx, value) in entries.sequence_values::<LuaValue<'_>>().enumerate() {
+            let idx = idx + 1;
+            let value = value.with_context(|_| format!("could not retrieve entry #{idx}"))?;
+            let entry = LuaEntry::from_lua(value, lua)
+                .with_context(|_| format!("entry #{idx} is invalid"))?;
+            result.push(entry);
+        }
+
+        Ok(Self(result))
     }
 }
 
@@ -487,11 +508,15 @@ struct LuaChildren {
 impl LuaChildren {
     fn call(_lua: &Lua, this: &mut Self, _: ()) -> LuaResult<Option<BaseNodeRef>> {
         Ok(this.with_mut(|fields| {
-            fields
-                .iter
-                .next()
-                .filter(|node_ref| !*fields.elements_only || node_ref.value().is_element())
-                .map(|node_ref| BaseNodeRef::from_node_ref(fields.html.clone(), node_ref))
+            for node_ref in fields.iter {
+                if *fields.elements_only && !node_ref.value().is_element() {
+                    continue;
+                }
+
+                return Some(BaseNodeRef::from_node_ref(fields.html.clone(), node_ref));
+            }
+
+            None
         }))
     }
 }
@@ -515,11 +540,15 @@ struct LuaDescendants {
 impl LuaDescendants {
     fn call(_lua: &Lua, this: &mut Self, _: ()) -> LuaResult<Option<BaseNodeRef>> {
         Ok(this.with_mut(|fields| {
-            fields
-                .iter
-                .next()
-                .filter(|node_ref| !*fields.elements_only || node_ref.value().is_element())
-                .map(|node_ref| BaseNodeRef::from_node_ref(fields.html.clone(), node_ref))
+            for node_ref in fields.iter {
+                if *fields.elements_only && !node_ref.value().is_element() {
+                    continue;
+                }
+
+                return Some(BaseNodeRef::from_node_ref(fields.html.clone(), node_ref));
+            }
+
+            None
         }))
     }
 }

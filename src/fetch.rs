@@ -212,8 +212,10 @@ impl Task {
         let entries = {
             let feeds = self.feeds.clone();
             let name = self.name.clone();
+            let span = info_span!("extractor");
 
             tokio::task::spawn_blocking(move || {
+                let _span = span.enter();
                 let feed = &feeds[&name];
 
                 feed.extractor

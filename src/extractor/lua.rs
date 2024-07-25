@@ -8,7 +8,7 @@ use tracing::{debug, warn};
 use crate::config;
 
 use self::api::add_feedgen_api;
-use self::types::{Buffer, LuaEntry};
+use self::types::{Buffer, LuaEntries};
 
 use super::{Entry, Extractor};
 
@@ -53,9 +53,10 @@ impl Extractor for LuaExtractor {
             .lua
             .registry_value(&self.extract_key)
             .context("could not retrieve the `extract` function")?;
-        let entries: Vec<LuaEntry> = extract
+        let entries: LuaEntries = extract
             .call(buf)
             .context("running the `extract` function failed")?;
+        let entries = Vec::from(entries);
 
         Ok(entries
             .into_iter()

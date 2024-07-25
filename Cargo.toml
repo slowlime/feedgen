@@ -7,13 +7,13 @@ edition = "2021"
 anyhow = "1.0.86"
 axum = "0.7.5"
 clap = { version = "4.5.9", features = ["derive", "env"] }
-derive_more = { version = "0.99.18", default-features = false, features = ["from"] }
+derive_more = { version = "0.99.18", default-features = false, features = ["from", "into"] }
 ego-tree = "0.6.2"
 elsa = "1.10.0"
 handlebars = "5.1.2"
 html5ever = "0.27.0"
 http-cache-reqwest = { version = "0.14.0", features = ["manager-moka"] }
-mlua = { version = "0.9.9", features = ["lua54", "send", "serialize"] }
+mlua = { version = "0.9.9", features = ["lua54", "send"], git = "https://github.com/slowlime/mlua.git", branch = "preserve-error-contexts" }
 ouroboros = "0.18.4"
 rand = { version = "0.8.5", features = ["small_rng"] }
 regex-lite = "0.1.6"

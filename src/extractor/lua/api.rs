@@ -1,8 +1,8 @@
 use std::cell::Cell;
 
 use anyhow::{anyhow, Context, Result};
-use mlua::{FromLuaMulti, IntoLuaMulti, Lua, Table as LuaTable};
-use mlua::{Result as LuaResult, Variadic};
+use mlua::Result as LuaResult;
+use mlua::{FromLuaMulti, IntoLuaMulti, Lua, MultiValue, Table as LuaTable};
 use scraper::Html;
 use tracing::{debug, error, info, trace, warn};
 
@@ -33,46 +33,74 @@ fn get_caller_info(lua: &Lua) -> String {
     }
 }
 
-fn concat_strings(s: &[String], sep: &str) -> String {
+fn args_to_string(values: MultiValue<'_>, sep: &str) -> String {
+    use std::fmt::Write;
+
     let mut result = String::new();
 
-    for (idx, s) in s.iter().enumerate() {
+    for (idx, value) in values.into_iter().enumerate() {
         if idx > 0 {
             result.push_str(sep);
         }
 
-        result.push_str(s);
+        match value.to_string() {
+            Ok(s) => result.push_str(&s),
+
+            Err(e) => {
+                let _ = write!(result, "<conversion of arg #{} failed: {e}>", idx + 1);
+            }
+        }
     }
 
     result
 }
 
-fn log_trace(lua: &Lua, s: Variadic<String>) -> LuaResult<()> {
-    trace!(location = %get_caller_info(lua), "{}", concat_strings(&s, " "));
+fn log_trace(lua: &Lua, args: MultiValue<'_>) -> LuaResult<()> {
+    trace!(
+        location = %get_caller_info(lua),
+        "{}",
+        args_to_string(args, " "),
+    );
 
     Ok(())
 }
 
-fn log_debug(lua: &Lua, s: Variadic<String>) -> LuaResult<()> {
-    debug!(location = %get_caller_info(lua), "{}", concat_strings(&s, " "));
+fn log_debug(lua: &Lua, args: MultiValue<'_>) -> LuaResult<()> {
+    debug!(
+        location = %get_caller_info(lua),
+        "{}",
+        args_to_string(args, " "),
+    );
 
     Ok(())
 }
 
-fn log_info(lua: &Lua, s: Variadic<String>) -> LuaResult<()> {
-    info!(location = %get_caller_info(lua), "{}", concat_strings(&s, " "));
+fn log_info(lua: &Lua, args: MultiValue<'_>) -> LuaResult<()> {
+    info!(
+        location = %get_caller_info(lua),
+        "{}",
+        args_to_string(args, " "),
+    );
 
     Ok(())
 }
 
-fn log_warn(lua: &Lua, s: Variadic<String>) -> LuaResult<()> {
-    warn!(location = %get_caller_info(lua), "{}", concat_strings(&s, " "));
+fn log_warn(lua: &Lua, args: MultiValue<'_>) -> LuaResult<()> {
+    warn!(
+        location = %get_caller_info(lua),
+        "{}",
+        args_to_string(args, " "),
+    );
 
     Ok(())
 }
 
-fn log_error(lua: &Lua, s: Variadic<String>) -> LuaResult<()> {
-    error!(location = %get_caller_info(lua), "{}", concat_strings(&s, " "));
+fn log_error(lua: &Lua, args: MultiValue<'_>) -> LuaResult<()> {
+    error!(
+        location = %get_caller_info(lua),
+        "{}",
+        args_to_string(args, " "),
+    );
 
     Ok(())
 }
