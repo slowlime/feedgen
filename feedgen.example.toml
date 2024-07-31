@@ -62,12 +62,12 @@ url = ".//span[@class='titleline']/a/@href"
 #
 # As an aside: note how this expression selects only the first node of the
 # nodeset. If the result contains several nodes, they are concatenated.
-author = "(following-sibling::tr//a[@class='hnuser'])[1]"
+author = "following-sibling::tr[1]//a[@class='hnuser']"
 
 # An XPath expression returning the publication date of the entry. The returned
 # value must include timezone information! If the source does not provide it,
 # use, e.g., `concat` to insert it into the result. Optional.
-pub-date = "concat((following-sibling::tr//span[@class='age']/@title)[1], 'Z')"
+pub-date = "concat(following-sibling::tr[1]//span[@class='age']/@title, 'Z')"
 
 # A format description used for parsing the result of `pub-date`.
 # See https://time-rs.github.io/book/api/format-description.html for the
