@@ -10,7 +10,7 @@ use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tower::ServiceBuilder;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, TraceLayer};
-use tracing::{error, Level};
+use tracing::{error, info, warn, Level};
 
 use crate::state::State;
 
@@ -42,6 +42,11 @@ impl Server {
         let socket = TcpListener::bind(bind_addr)
             .await
             .with_context(|| anyhow!("could not bind to `{bind_addr}`"))?;
+
+        match socket.local_addr() {
+            Ok(addr) => info!("Created a socket for the HTTP server bound to {addr}"),
+            Err(e) => warn!("Created a socket for the HTTP server but could not retrieve its local address: {e}"),
+        }
 
         let app = Router::new()
             .route("/", get(routes::index))
