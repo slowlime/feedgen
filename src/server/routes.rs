@@ -1,3 +1,4 @@
+use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::mem;
 
@@ -99,7 +100,7 @@ pub async fn get_feed(
 ) -> Result<impl IntoResponse> {
     let feed = state.feeds.get(&name).ok_or(StatusCode::NOT_FOUND)?;
 
-    let entries = convert_errors(async {
+    let mut entries = convert_errors(async {
         let mut tx = state.storage.begin().await?;
         let entries = tx.get_feed_entries(&name, MAX_FEED_ENTRY_COUNT).await?;
         tx.commit().await?;
@@ -107,6 +108,7 @@ pub async fn get_feed(
         Ok(entries)
     })
     .await?;
+    entries.sort_by_key(|entry| Reverse(entry.pub_date.unwrap()));
 
     let now = OffsetDateTime::now_utc();
     let mut channel = ChannelBuilder::default();
